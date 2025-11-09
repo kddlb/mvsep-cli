@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "mvsep-cli": {
+      "commandName": "Project",
+      "commandLineArgs": "\"D:\\LegacyMusic\\Beatles - Discography - 1963-2023\\4 Box Sets\\2009 - The Beatles Stereo Box Set\\14 Past Masters\\Disc 1\\01.02 - From Me To You.flac\"  --algorithm=37 --add_opt1=7 --add_opt2=1"
+    }
+  }
+}
