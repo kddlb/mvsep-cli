@@ -27,6 +27,7 @@ using System.Net.Http.Headers;
 
 namespace CliFetcher.Core;
 
+// Represents options for configuring download behavior
 public sealed class DownloadOptions
 {
     /// <summary>Optional custom User-Agent product name/version (e.g., "CliFetcher/1.0").</summary>
@@ -41,6 +42,7 @@ public sealed class DownloadOptions
     public TimeSpan? HttpTimeout { get; init; } = TimeSpan.FromMinutes(30);
 }
 
+// Represents progress information during a download
 public readonly record struct DownloadProgress(
     long BytesReceived,
     long? TotalBytes,                 // null when unknown
@@ -53,11 +55,13 @@ public readonly record struct DownloadProgress(
     public double? Percent => TotalBytes is > 0 ? (double)BytesReceived / TotalBytes.Value : null;
 }
 
+// Handles downloading and uploading files with progress reporting
 public sealed class Downloader : IDisposable
 {
     private readonly HttpClient _http;
     private bool _disposed;
 
+    // Constructor to initialize the downloader with optional custom settings
     public Downloader(HttpMessageHandler? handler = null, DownloadOptions? options = null)
     {
         Options = options ?? new DownloadOptions();
@@ -100,10 +104,11 @@ public sealed class Downloader : IDisposable
             }
         }
 
+        // Create the HTTP request
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         if (!string.IsNullOrWhiteSpace(Options.UserAgent))
         {
-            // "Product/Version" pairs are standard
+            // Add User-Agent header if specified
             var ua = Options.UserAgent!.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                                        .Select(s => s.Split('/', 2))
                                        .Where(p => p.Length == 2);
@@ -115,13 +120,14 @@ public sealed class Downloader : IDisposable
         if (existing > 0)
             req.Headers.Range = new RangeHeaderValue(existing, null);
 
+        // Send the HTTP request
         using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
         if (existing > 0 && resp.StatusCode == HttpStatusCode.OK)
         {
             // Server ignored Range; start fresh
             existing = 0;
-            // If file exists, nuke it to avoid mixing partial with fresh
+            // If file exists, delete it to avoid mixing partial with fresh
             if (File.Exists(outputPath)) File.Delete(outputPath);
         }
 
@@ -152,11 +158,11 @@ public sealed class Downloader : IDisposable
         long received = existing;
         var sw = Stopwatch.StartNew();
 
-        // simple moving average over last N ticks
+        // Simple moving average over last N ticks
         const int N = 20;
         var history = new Queue<(double t, long bytes)>(N);
 
-        // initial tick
+        // Initial progress report
         Report();
 
         int read;
@@ -168,7 +174,7 @@ public sealed class Downloader : IDisposable
         }
 
         sw.Stop();
-        Report(); // final
+        Report(); // Final progress report
 
         void Report()
         {
@@ -212,7 +218,7 @@ public sealed class Downloader : IDisposable
             {
                 if (history.Count == N) history.Dequeue();
                 history.Enqueue((t, received));
-                // simple average of per-sample rates
+                // Simple average of per-sample rates
                 if (history.Count < 2) return current;
 
                 double sum = 0;
