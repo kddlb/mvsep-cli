@@ -136,7 +136,7 @@ public sealed class Downloader : IDisposable
 
         var totalBytes = existing + (resp.Content.Headers.ContentLength ?? 0);
         // If no Content-Length or we're starting from zero, this may be 0/unknown
-        long? knownTotal = resp.StatusCode == HttpStatusCode.PartialContent || resp.Content.Headers.ContentLength.HasValue
+        var knownTotal = resp.StatusCode == HttpStatusCode.PartialContent || resp.Content.Headers.ContentLength.HasValue
             ? (resp.Content.Headers.ContentLength.HasValue ? existing + resp.Content.Headers.ContentLength.Value : null)
             : resp.Content.Headers.ContentLength;
 
@@ -155,7 +155,7 @@ public sealed class Downloader : IDisposable
             useAsync: true);
 
         var buffer = new byte[Math.Max(4096, Options.BufferSize)];
-        long received = existing;
+        var received = existing;
         var sw = Stopwatch.StartNew();
 
         // Simple moving average over last N ticks
@@ -222,9 +222,9 @@ public sealed class Downloader : IDisposable
                 if (history.Count < 2) return current;
 
                 double sum = 0;
-                int count = 0;
+                var count = 0;
                 var items = history.ToArray();
-                for (int i = 1; i < items.Length; i++)
+                for (var i = 1; i < items.Length; i++)
                 {
                     var dt = items[i].t - items[i - 1].t;
                     var db = items[i].bytes - items[i - 1].bytes;
@@ -354,9 +354,9 @@ public sealed class Downloader : IDisposable
                     history.Enqueue((t, uploaded));
                     if (history.Count < 2) return current;
                     double sum = 0;
-                    int count = 0;
+                    var count = 0;
                     var items = history.ToArray();
-                    for (int i = 1; i < items.Length; i++)
+                    for (var i = 1; i < items.Length; i++)
                     {
                         var dt = items[i].t - items[i - 1].t;
                         var db = items[i].bytes - items[i - 1].bytes;
@@ -404,7 +404,7 @@ public sealed class Downloader : IDisposable
     {
         object sync = new();
         DownloadProgress? last = null;
-        bool finished = false;
+        var finished = false;
         return new Progress<DownloadProgress>(p =>
         {
             lock (sync)
@@ -417,10 +417,10 @@ public sealed class Downloader : IDisposable
                 var total = p.TotalBytes is long tb ? FormatSize(tb) : "?";
                 var progressMsg = $"{percent,6:F2}% {received}/{total} {rate,-12} {elapsed} {eta}".TrimEnd();
                 var prefixMsg = prefix ?? string.Empty;
-                int width = 80;
+                var width = 80;
                 try { width = Console.WindowWidth; } catch { try { width = Console.BufferWidth; } catch { width = 80; } }
                 if (width < 1) width = 80;
-                int available = width - prefixMsg.Length;
+                var available = width - prefixMsg.Length;
                 if (available < 10) available = 10; // fallback
                 if (progressMsg.Length > available)
                     progressMsg = progressMsg.Substring(0, available);
@@ -451,7 +451,7 @@ public sealed class Downloader : IDisposable
         {
             string[] units = { "B", "KB", "MB", "GB", "TB" };
             double v = bytes;
-            int i = 0;
+            var i = 0;
             while (v >= 1024 && i < units.Length - 1)
             {
                 v /= 1024;
@@ -467,7 +467,7 @@ public sealed class Downloader : IDisposable
     public static IProgress<DownloadProgress> ConsoleProgressSimple(string? prefix = null)
     {
         object sync = new();
-        bool finished = false;
+        var finished = false;
         return new Progress<DownloadProgress>(p =>
         {
             lock (sync)
@@ -477,10 +477,10 @@ public sealed class Downloader : IDisposable
                 var total = p.TotalBytes is long tb ? FormatSize(tb) : "?";
                 var progressMsg = $"{percent,6:F2}% {received}/{total}";
                 var prefixMsg = prefix ?? string.Empty;
-                int width = 40;
+                var width = 40;
                 try { width = Console.WindowWidth; } catch { try { width = Console.BufferWidth; } catch { width = 40; } }
                 if (width < 1) width = 40;
-                int available = width - prefixMsg.Length;
+                var available = width - prefixMsg.Length;
                 if (available < 10) available = 10;
                 if (progressMsg.Length > available)
                     progressMsg = progressMsg.Substring(0, available);
@@ -505,7 +505,7 @@ public sealed class Downloader : IDisposable
         {
             string[] units = { "B", "KB", "MB", "GB", "TB" };
             double v = bytes;
-            int i = 0;
+            var i = 0;
             while (v >= 1024 && i < units.Length - 1)
             {
                 v /= 1024;
