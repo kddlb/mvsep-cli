@@ -45,7 +45,7 @@ public static class Utils
     // Updates the progress indicator in the ConEmu terminal.
     public static void ConEmuProgress(int progress, ConEmuProgressStyle style = ConEmuProgressStyle.Default)
     {
-        string styleCode = style switch
+        var styleCode = style switch
         {
             ConEmuProgressStyle.Clear => "0", // Clear progress.
             ConEmuProgressStyle.Default => "1", // Default progress style.
@@ -56,6 +56,6 @@ public static class Utils
         };
 
         // Write the progress update to the terminal using ANSI escape codes.
-        Console.Write($"\x1b]9;{styleCode};{progress}\x07");
+        Console.Write($"\e]9;{styleCode};{progress}\a");
     }
 }

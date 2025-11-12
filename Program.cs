@@ -16,21 +16,27 @@ Option<int> algorithmOption = new("--algorithm", "-a")
     Required = true
 };
 
+// Define API key option (CLI takes priority over environment variable)
+Option<string> apiKeyOption = new("--api-key", "-k")
+{
+    Description = "API key for MVSEP. If not provided, MVSEP_API_KEY environment variable will be used. Get your API key at https://mvsep.com/user-api.",
+};
+
 // Define additional optional parameters
-Option<int> addOpt1 = new("--add_opt1")
+Option<int> addOpt1 = new("--add_opt1", "-o1")
 {
     Description = "First optional parameter.",
-    DefaultValueFactory = result => -1
+    DefaultValueFactory = _ => -1
 };
-Option<int> addOpt2 = new("--add_opt2")
+Option<int> addOpt2 = new("--add_opt2", "-o2")
 {
     Description = "Second optional parameter.",
-    DefaultValueFactory = result => -1
+    DefaultValueFactory = _ => -1
 };
-Option<int> addOpt3 = new("--add_opt3")
+Option<int> addOpt3 = new("--add_opt3", "-o3")
 {
     Description = "Third optional parameter.",
-    DefaultValueFactory = result => -1
+    DefaultValueFactory = _ => -1
 };
 
 // Create the root command for the CLI
@@ -38,6 +44,7 @@ RootCommand rootCommand = new("Audio Separator CLI")
 {
     fileOption,
     algorithmOption,
+    apiKeyOption,
     addOpt1,
     addOpt2,
     addOpt3
@@ -53,17 +60,21 @@ rootCommand.SetAction(async parseResult =>
         Console.WriteLine("Error: File argument is missing or invalid.");
         return;
     }
-    string filenameWithoutExtension = Path.GetFileNameWithoutExtension(file.Name);
-    string cwd = Directory.GetCurrentDirectory();
+    var filenameWithoutExtension = Path.GetFileNameWithoutExtension(file.Name);
+    var cwd = Directory.GetCurrentDirectory();
     var algorithm = parseResult.GetValue(algorithmOption);
     var opt1 = parseResult.GetValue(addOpt1);
     var opt2 = parseResult.GetValue(addOpt2);
     var opt3 = parseResult.GetValue(addOpt3);
 
-    // Check if the required environment variable is set
-    if (Environment.GetEnvironmentVariable("MVSEP_API_KEY") == null)
+    // Determine API key: CLI option takes priority over environment variable
+    var cliApiKey = parseResult.GetValue(apiKeyOption);
+    var envApiKey = Environment.GetEnvironmentVariable("MVSEP_API_KEY");
+    var apiKey = !string.IsNullOrEmpty(cliApiKey) ? cliApiKey : envApiKey;
+
+    if (string.IsNullOrEmpty(apiKey))
     {
-        Console.WriteLine("Warning: MVSEP_API_KEY environment variable is not set.");
+        Console.WriteLine("Error: API key not provided. Set MVSEP_API_KEY environment variable or pass --api-key <key>.");
         return;
     }
 
@@ -71,7 +82,7 @@ rootCommand.SetAction(async parseResult =>
     Utils.ConEmuProgress(0, Utils.ConEmuProgressStyle.Indeterminate);
 
     // Prepare the temporary file path for processing
-    string tempFilePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".flac");
+    var tempFilePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".flac");
     Console.WriteLine($"Temporary file will be created at: {tempFilePath}");
 
     // Convert the input file to FLAC format using ffmpeg
@@ -84,18 +95,18 @@ rootCommand.SetAction(async parseResult =>
     var paramDict = new Dictionary<string, string>
     {
         { "sep_type", algorithm.ToString() },
-        { "api_token", Environment.GetEnvironmentVariable("MVSEP_API_KEY") ?? "" },
+        { "api_token", apiKey },
         { "output_format", "2" }
     };
 
     // Add optional parameters if provided
-    if (addOpt1 != null && opt1 != -1)
+    if (opt1 != -1)
         paramDict.Add("add_opt1", opt1.ToString());
 
-    if (addOpt2 != null && opt2 != -1)
+    if (opt2 != -1)
         paramDict.Add("add_opt2", opt2.ToString());
 
-    if (addOpt3 != null && opt3 != -1)
+    if (opt3 != -1)
         paramDict.Add("add_opt3", opt3.ToString());
 
     // Display upload parameters (excluding sensitive data)
@@ -143,5 +154,5 @@ rootCommand.SetAction(async parseResult =>
 });
 
 // Parse the command-line arguments and invoke the root command
-ParseResult parseResult = rootCommand.Parse(args);
+var parseResult = rootCommand.Parse(args);
 parseResult.InvokeAsync().Wait();
