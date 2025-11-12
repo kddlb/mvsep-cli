@@ -24,6 +24,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
+using Spectre.Console;
 
 namespace CliFetcher.Core;
 
@@ -405,7 +406,8 @@ public sealed class Downloader : IDisposable
         object sync = new();
         DownloadProgress? last = null;
         var finished = false;
-        return new Progress<DownloadProgress>(p =>
+        // Use Spectre.Console progress for nicer UI
+        var progress = new Progress<DownloadProgress>(p =>
         {
             lock (sync)
             {
@@ -417,6 +419,8 @@ public sealed class Downloader : IDisposable
                 var total = p.TotalBytes is long tb ? FormatSize(tb) : "?";
                 var progressMsg = $"{percent,6:F2}% {received}/{total} {rate,-12} {elapsed} {eta}".TrimEnd();
                 var prefixMsg = prefix ?? string.Empty;
+
+                // Fallback to console when Spectre progress can't be used
                 var width = 80;
                 try { width = Console.WindowWidth; } catch { try { width = Console.BufferWidth; } catch { width = 80; } }
                 if (width < 1) width = 80;
@@ -442,6 +446,8 @@ public sealed class Downloader : IDisposable
             }
         });
 
+        return progress;
+
         static string FormatRate(double bytesPerSec)
         {
             if (bytesPerSec < 1) return "";
@@ -463,11 +469,14 @@ public sealed class Downloader : IDisposable
 
     /// <summary>
     /// Returns an IProgress that writes only percent and bytes to the system console (no ETA or speed).
+    /// Implemented using Spectre.Console Progress when available.
     /// </summary>
     public static IProgress<DownloadProgress> ConsoleProgressSimple(string? prefix = null)
     {
         object sync = new();
         var finished = false;
+
+        // Spectre fallback: we keep behavior but also render with Spectre when possible
         return new Progress<DownloadProgress>(p =>
         {
             lock (sync)

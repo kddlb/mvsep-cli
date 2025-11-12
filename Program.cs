@@ -1,6 +1,7 @@
 ﻿using System.CommandLine;
 using CliFetcher.Core;
 using mvsep_cli;
+using Spectre.Console;
 
 // Define the file argument for the CLI
 Argument<FileInfo> fileOption = new("file")
@@ -39,6 +40,12 @@ Option<int> addOpt3 = new("--add_opt3", "-o3")
     DefaultValueFactory = _ => -1
 };
 
+Option<OutputFormat> outputFormatOption = new("--output-format", "-f")
+{
+    Description = "Output format for separated files.",
+    DefaultValueFactory = _ => OutputFormat.FLAC
+};
+
 // Create the root command for the CLI
 RootCommand rootCommand = new("Audio Separator CLI")
 {
@@ -47,7 +54,8 @@ RootCommand rootCommand = new("Audio Separator CLI")
     apiKeyOption,
     addOpt1,
     addOpt2,
-    addOpt3
+    addOpt3,
+    outputFormatOption
 };
 
 // Set the action to be performed when the command is executed
@@ -57,7 +65,7 @@ rootCommand.SetAction(async parseResult =>
     var file = parseResult.GetValue(fileOption);
     if (file == null)
     {
-        Console.WriteLine("Error: File argument is missing or invalid.");
+        AnsiConsole.MarkupLine("[red]Error: File argument is missing or invalid.[/]");
         return;
     }
     var filenameWithoutExtension = Path.GetFileNameWithoutExtension(file.Name);
@@ -66,6 +74,7 @@ rootCommand.SetAction(async parseResult =>
     var opt1 = parseResult.GetValue(addOpt1);
     var opt2 = parseResult.GetValue(addOpt2);
     var opt3 = parseResult.GetValue(addOpt3);
+    var outputFormat = parseResult.GetValue(outputFormatOption);
 
     // Determine API key: CLI option takes priority over environment variable
     var cliApiKey = parseResult.GetValue(apiKeyOption);
@@ -74,21 +83,18 @@ rootCommand.SetAction(async parseResult =>
 
     if (string.IsNullOrEmpty(apiKey))
     {
-        Console.WriteLine("Error: API key not provided. Set MVSEP_API_KEY environment variable or pass --api-key <key>.");
+        AnsiConsole.MarkupLine("[red]Error: API key not provided. Set MVSEP_API_KEY environment variable or pass --api-key <key>.[/]");
         return;
     }
 
-    // Indicate progress using ConEmu
-    Utils.ConEmuProgress(0, Utils.ConEmuProgressStyle.Indeterminate);
-
     // Prepare the temporary file path for processing
     var tempFilePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".flac");
-    Console.WriteLine($"Temporary file will be created at: {tempFilePath}");
+    AnsiConsole.MarkupLine($"Temporary file will be created at: [blue]{tempFilePath}[/]");
 
     // Convert the input file to FLAC format using ffmpeg
     Utils.RunProcess("ffmpeg", $" -hide_banner -loglevel error -i \"{file.FullName}\" -compression_level 12 \"{tempFilePath}\"");
 
-    Console.WriteLine("Uploading...");
+    AnsiConsole.MarkupLine("Uploading...");
 
     // Initialize the uploader and prepare parameters for the API request
     using var uploader = new Downloader();
@@ -96,7 +102,7 @@ rootCommand.SetAction(async parseResult =>
     {
         { "sep_type", algorithm.ToString() },
         { "api_token", apiKey },
-        { "output_format", "2" }
+        { "output_format", ((int)outputFormat).ToString() }
     };
 
     // Add optional parameters if provided
@@ -111,48 +117,112 @@ rootCommand.SetAction(async parseResult =>
 
     // Display upload parameters (excluding sensitive data)
     var safeOutputParamDict = paramDict.Where(e => e.Key != "api_token");
-    Console.WriteLine("Upload parameters:");
+    AnsiConsole.MarkupLine("Upload parameters:");
     foreach (var (key, value) in safeOutputParamDict)
     {
-        Console.WriteLine($"  {key}: {value}");
+        AnsiConsole.MarkupLine($"  [green]{key}[/]: [yellow]{value}[/]");
     }
 
-    // Upload the file and get the result
-    var uploadResult = await uploader.UploadFileAsync("https://mvsep.com/api/separation/create", tempFilePath, "audiofile", paramDict, Downloader.ConsoleProgressSimple("Upload Progress: "));
+    // Upload the file and get the result using Spectre.Console progress
+    var uploadResult = string.Empty;
+    var tempFileInfo = new FileInfo(tempFilePath);
+    var fileSize = tempFileInfo.Exists ? tempFileInfo.Length : 0L;
+
+    await AnsiConsole.Progress()
+        .AutoClear(true)
+        .Columns(new ProgressColumn[]
+        {
+            new TaskDescriptionColumn(),
+            new ProgressBarColumn(),
+            new PercentageColumn(),
+            new RemainingTimeColumn(),
+            new SpinnerColumn(),
+        })
+        .StartAsync(async ctx =>
+        {
+            var task = ctx.AddTask("Uploading file", autoStart: true);
+            if (fileSize > 0) task.MaxValue = fileSize;
+
+            var progress = new Progress<DownloadProgress>(p =>
+            {
+                if (p.TotalBytes.HasValue)
+                    task.MaxValue = p.TotalBytes.Value;
+                task.Value = p.BytesReceived;
+            });
+
+            uploadResult = await uploader.UploadFileAsync("https://mvsep.com/api/separation/create", tempFilePath, "audiofile", paramDict, progress);
+
+            task.Value = task.MaxValue;
+        });
 
     var uploadResultObject = MvsepUploadSuccess.FromJson(uploadResult);
-    Console.WriteLine($"Upload successful. Job hash: {uploadResultObject.Data.Hash}");
+    AnsiConsole.MarkupLine($"Upload successful. Job hash: [green]{uploadResultObject.Data.Hash}[/]");
 
     // Poll the API for the separation result
     var url = uploadResultObject.Data.Link;
     var statusResult = await Utils.GetStringFromUrlAsync(url);
     var statusResultObject = MvsepStatus.FromJson(statusResult);
-    while (statusResultObject.Status != "done")
-    {
-        Utils.ConEmuProgress(0, Utils.ConEmuProgressStyle.Indeterminate);
-        var statusMsg = $"Current status: {statusResultObject.Status}. Checking again in 5 seconds...";
-        var timeMsg = $"[{DateTime.Now:HH:mm:ss}]".PadLeft(Console.WindowWidth - statusMsg.Length - 1);
-        Console.Write($"\r{statusMsg}{timeMsg}");
-        await Task.Delay(5000);
-        statusResult = await Utils.GetStringFromUrlAsync(url);
-        statusResultObject = MvsepStatus.FromJson(statusResult);
-    }
 
-    // Clear the progress indicator
-    Utils.ConEmuProgress(0, Utils.ConEmuProgressStyle.Clear);
+    await AnsiConsole.Status()
+        .Spinner(Spinner.Known.Dots)
+        .StartAsync("Waiting for separation to complete...", async ctx =>
+        {
+            while (statusResultObject.Status != "done")
+            {
+                ctx.Status($"Current status: {statusResultObject.Status}");
+                await Task.Delay(2500);
+                statusResult = await Utils.GetStringFromUrlAsync(url);
+                statusResultObject = MvsepStatus.FromJson(statusResult);
+            }
+        });
 
-    Console.WriteLine("Separation done. Downloading result...");
+    AnsiConsole.MarkupLine("[green]Separation done. Downloading result...[/]");
 
-    // Download the separated audio files
-    foreach (var (stemFile, index) in statusResultObject.Data.Files.Select((value, i) => (value, i)))
-    {
-        var filename = $"{filenameWithoutExtension}_Algo{algorithm}_{index:D2}_{stemFile.Type}.flac";
-        var destinationPath = Path.Combine(cwd, filename);
-        await uploader.DownloadFileAsync(stemFile.Url.ToString(), destinationPath, Downloader.ConsoleProgressSimple($"Downloading {filename}: "));
-    }
+    // Download the separated audio files with Spectre progress
+    await AnsiConsole.Progress()
+        .AutoClear(false)
+        .Columns(new ProgressColumn[]
+        {
+            new TaskDescriptionColumn(),
+            new ProgressBarColumn(),
+            new PercentageColumn(),
+            new RemainingTimeColumn(),
+            new SpinnerColumn(),
+        })
+        .StartAsync(async ctx =>
+        {
+            var tasks = new List<ProgressTask>();
+            foreach (var (stemFile, index) in statusResultObject.Data.Files.Select((value, i) => (value, i)))
+            {
+                var filename = $"{filenameWithoutExtension}_Algo{algorithm}_{index:D2}_{stemFile.Type}.flac";
+                var destinationPath = Path.Combine(cwd, filename);
+                var task = ctx.AddTask($"Downloading {filename}", autoStart: true);
+                // subscribe progress to update spectre task
+                var progress = new Progress<DownloadProgress>(p =>
+                {
+                    if (p.TotalBytes.HasValue)
+                        task.MaxValue = p.TotalBytes.Value;
+                    task.Value = p.BytesReceived;
+                });
+
+                await uploader.DownloadFileAsync(stemFile.Url.ToString(), destinationPath, progress);
+                task.Value = task.MaxValue;
+            }
+        });
 
 });
 
 // Parse the command-line arguments and invoke the root command
 var parseResult = rootCommand.Parse(args);
 parseResult.InvokeAsync().Wait();
+
+public enum OutputFormat
+{
+    MP3,
+    WAV,
+    FLAC,
+    M4A,
+    WAV32,
+    FLAC24
+};
+
