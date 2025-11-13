@@ -1,7 +1,16 @@
 ﻿using System.CommandLine;
-using CliFetcher.Core;
 using mvsep_cli;
 using Spectre.Console;
+using Spectre.Console.Rendering;
+
+// Define API key option (CLI takes priority over environment variable)
+Option<string> apiKeyOption = new("--api-key", "-k")
+{
+    Description = "API key for MVSEP. If not provided, MVSEP_API_KEY environment variable will be used. Get your API key at https://mvsep.com/user-api.",
+    
+};
+
+#region single command options
 
 // Define the file argument for the CLI
 Argument<FileInfo> fileOption = new("file")
@@ -15,12 +24,6 @@ Option<int> algorithmOption = new("--algorithm", "-a")
 {
     Description = "The separation algorithm to use.",
     Required = true
-};
-
-// Define API key option (CLI takes priority over environment variable)
-Option<string> apiKeyOption = new("--api-key", "-k")
-{
-    Description = "API key for MVSEP. If not provided, MVSEP_API_KEY environment variable will be used. Get your API key at https://mvsep.com/user-api.",
 };
 
 // Define additional optional parameters
@@ -46,8 +49,58 @@ Option<OutputFormat> outputFormatOption = new("--output-format", "-f")
     DefaultValueFactory = _ => OutputFormat.FLAC
 };
 
+#endregion
+
+#region full command options
+
+Argument<FileInfo> fileArgument = new("file")
+{
+    Arity = ArgumentArity.ExactlyOne,
+    Description = "The file to process."
+};
+
+
+Option<ChannelWhere> drumsSeparationChannelOption = new("--drums-on", "-d")
+{
+    Description = "Select the channel for drums separation.",
+    DefaultValueFactory = result => ChannelWhere.Left
+};
+
+Option<bool> tambourineSeparationOption = new("--separate-tambourine", "-t")
+{
+    Description = "Enable tambourine separation.",
+    DefaultValueFactory = result => false
+};
+
+Option<bool> doLeadBackSeparationOnVocalsOption = new("--karaoke-on-vocals", "-v")
+{
+    Description = "Enable lead-back vocals separation.",
+    DefaultValueFactory = result => false
+};
+
+Option<ChannelWhere?> acousticGuitarSeparationChannelOption = new("--acoustic-on", "-a")
+{
+    Description = "Select the channel for acoustic guitar separation."
+};
+
+Option<bool> dumpOptionsAndExitOption = new("--dump-options", "-x")
+{
+    Description = "Dump the selected options and exit.",
+    DefaultValueFactory = result => false
+};
+
+
+#endregion
+
 // Create the root command for the CLI
 RootCommand rootCommand = new("Audio Separator CLI")
+{
+    apiKeyOption
+};
+
+
+
+Command singleCommand = new("single", "Runs a single separation")
 {
     fileOption,
     algorithmOption,
@@ -56,10 +109,11 @@ RootCommand rootCommand = new("Audio Separator CLI")
     addOpt2,
     addOpt3,
     outputFormatOption
+
 };
 
 // Set the action to be performed when the command is executed
-rootCommand.SetAction(async parseResult =>
+singleCommand.SetAction(async parseResult =>
 {
     // Retrieve values from the parsed result
     var file = parseResult.GetValue(fileOption);
@@ -68,8 +122,6 @@ rootCommand.SetAction(async parseResult =>
         AnsiConsole.MarkupLine("[red]Error: File argument is missing or invalid.[/]");
         return;
     }
-    var filenameWithoutExtension = Path.GetFileNameWithoutExtension(file.Name);
-    var cwd = Directory.GetCurrentDirectory();
     var algorithm = parseResult.GetValue(algorithmOption);
     var opt1 = parseResult.GetValue(addOpt1);
     var opt2 = parseResult.GetValue(addOpt2);
@@ -87,130 +139,137 @@ rootCommand.SetAction(async parseResult =>
         return;
     }
 
-    // Prepare the temporary file path for processing
-    var tempFilePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".flac");
-    AnsiConsole.MarkupLine($"Temporary file will be created at: [blue]{tempFilePath}[/]");
+    await MOTM.Execute(file, 
+        algorithm, 
+        apiKey, 
+        opt1 != -1 ? opt1 : null, 
+        opt2 != -1 ? opt2 : null, 
+        opt3 != -1 ? opt3 : null, 
+        outputFormat);
 
-    // Convert the input file to FLAC format using ffmpeg
-    Utils.RunProcess("ffmpeg", $" -hide_banner -loglevel error -i \"{file.FullName}\" -compression_level 12 \"{tempFilePath}\"");
-
-    AnsiConsole.MarkupLine("Uploading...");
-
-    // Initialize the uploader and prepare parameters for the API request
-    using var uploader = new Downloader();
-    var paramDict = new Dictionary<string, string>
-    {
-        { "sep_type", algorithm.ToString() },
-        { "api_token", apiKey },
-        { "output_format", ((int)outputFormat).ToString() }
-    };
-
-    // Add optional parameters if provided
-    if (opt1 != -1)
-        paramDict.Add("add_opt1", opt1.ToString());
-
-    if (opt2 != -1)
-        paramDict.Add("add_opt2", opt2.ToString());
-
-    if (opt3 != -1)
-        paramDict.Add("add_opt3", opt3.ToString());
-
-    // Display upload parameters (excluding sensitive data)
-    var safeOutputParamDict = paramDict.Where(e => e.Key != "api_token");
-    AnsiConsole.MarkupLine("Upload parameters:");
-    foreach (var (key, value) in safeOutputParamDict)
-    {
-        AnsiConsole.MarkupLine($"  [green]{key}[/]: [yellow]{value}[/]");
-    }
-
-    // Upload the file and get the result using Spectre.Console progress
-    var uploadResult = string.Empty;
-    var tempFileInfo = new FileInfo(tempFilePath);
-    var fileSize = tempFileInfo.Exists ? tempFileInfo.Length : 0L;
-
-    await AnsiConsole.Progress()
-        .AutoClear(true)
-        .Columns(new ProgressColumn[]
-        {
-            new TaskDescriptionColumn(),
-            new ProgressBarColumn(),
-            new PercentageColumn(),
-            new RemainingTimeColumn(),
-            new SpinnerColumn(),
-        })
-        .StartAsync(async ctx =>
-        {
-            var task = ctx.AddTask("Uploading file", autoStart: true);
-            if (fileSize > 0) task.MaxValue = fileSize;
-
-            var progress = new Progress<DownloadProgress>(p =>
-            {
-                if (p.TotalBytes.HasValue)
-                    task.MaxValue = p.TotalBytes.Value;
-                task.Value = p.BytesReceived;
-            });
-
-            uploadResult = await uploader.UploadFileAsync("https://mvsep.com/api/separation/create", tempFilePath, "audiofile", paramDict, progress);
-
-            task.Value = task.MaxValue;
-        });
-
-    var uploadResultObject = MvsepUploadSuccess.FromJson(uploadResult);
-    AnsiConsole.MarkupLine($"Upload successful. Job hash: [green]{uploadResultObject.Data.Hash}[/]");
-
-    // Poll the API for the separation result
-    var url = uploadResultObject.Data.Link;
-    var statusResult = await Utils.GetStringFromUrlAsync(url);
-    var statusResultObject = MvsepStatus.FromJson(statusResult);
-
-    await AnsiConsole.Status()
-        .Spinner(Spinner.Known.Dots)
-        .StartAsync("Waiting for separation to complete...", async ctx =>
-        {
-            while (statusResultObject.Status != "done")
-            {
-                ctx.Status($"Current status: {statusResultObject.Status}");
-                await Task.Delay(2500);
-                statusResult = await Utils.GetStringFromUrlAsync(url);
-                statusResultObject = MvsepStatus.FromJson(statusResult);
-            }
-        });
-
-    AnsiConsole.MarkupLine("[green]Separation done. Downloading result...[/]");
-
-    // Download the separated audio files with Spectre progress
-    await AnsiConsole.Progress()
-        .AutoClear(false)
-        .Columns(new ProgressColumn[]
-        {
-            new TaskDescriptionColumn(),
-            new ProgressBarColumn(),
-            new PercentageColumn(),
-            new RemainingTimeColumn(),
-            new SpinnerColumn(),
-        })
-        .StartAsync(async ctx =>
-        {
-            var tasks = new List<ProgressTask>();
-            foreach (var (stemFile, index) in statusResultObject.Data.Files.Select((value, i) => (value, i)))
-            {
-                var filename = $"{filenameWithoutExtension}_Algo{algorithm}_{index:D2}_{stemFile.Type}.flac";
-                var destinationPath = Path.Combine(cwd, filename);
-                var task = ctx.AddTask($"Downloading {filename}", autoStart: true);
-                // subscribe progress to update spectre task
-                var progress = new Progress<DownloadProgress>(p =>
-                {
-                    if (p.TotalBytes.HasValue)
-                        task.MaxValue = p.TotalBytes.Value;
-                    task.Value = p.BytesReceived;
-                });
-
-                await uploader.DownloadFileAsync(stemFile.Url.ToString(), destinationPath, progress);
-                task.Value = task.MaxValue;
-            }
-        });
 
 });
+
+rootCommand.Add(singleCommand);
+
+Command batchedCommand = new("full", "Runs a batched separation")
+{
+    fileArgument,
+    drumsSeparationChannelOption,
+    doLeadBackSeparationOnVocalsOption,
+    acousticGuitarSeparationChannelOption,
+    tambourineSeparationOption,
+    dumpOptionsAndExitOption,
+    apiKeyOption,
+};
+
+batchedCommand.SetAction(async parseResult =>
+{
+    var file = parseResult.GetValue(fileArgument);
+    var drumsOnChannel = parseResult.GetValue(drumsSeparationChannelOption);
+    var karaokeOnVocals = parseResult.GetValue(doLeadBackSeparationOnVocalsOption);
+    var acousticOnChannel = parseResult.GetValue(acousticGuitarSeparationChannelOption);
+    var separateTambourine = parseResult.GetValue(tambourineSeparationOption);
+    var dumpOptionsAndExit = parseResult.GetValue(dumpOptionsAndExitOption);
+
+    var cliApiKey = parseResult.GetValue(apiKeyOption);
+    var envApiKey = Environment.GetEnvironmentVariable("MVSEP_API_KEY");
+    var apiKey = !string.IsNullOrEmpty(cliApiKey) ? cliApiKey : envApiKey;
+
+
+    if (dumpOptionsAndExit)
+    {
+
+        var textPath = new TextPath(file.FullName)
+            .RootColor(Color.Red)
+            .SeparatorColor(Color.Green)
+            .StemColor(Color.Blue)
+            .LeafColor(Color.Yellow);
+
+        var table = new Table()
+            .AddColumn(new TableColumn("[u]Option[/]"))
+            .AddColumn(new TableColumn("[u]Value[/]"));
+
+        table.AddRow(new Markup("File"), textPath);
+        table.AddRow("Drums Separation Channel", drumsOnChannel.ToString());
+        table.AddRow("Karaoke on Vocals", karaokeOnVocals ? "[green]Yes[/]" : "[red]No[/]");
+        table.AddRow("Acoustic Guitar Separation Channel", acousticOnChannel.HasValue ? acousticOnChannel.ToString() : "[grey]None[/]");
+        table.AddRow("Separate Tambourine", separateTambourine ? "[green]Yes[/]" : "[red]No[/]");
+
+        AnsiConsole.Write(new Rule("[yellow]Selected Options[/]"));
+        AnsiConsole.Write(table);
+
+        return;
+    }
+
+    //check if file exists
+    if (!file.Exists)
+    {
+        AnsiConsole.MarkupLineInterpolated($"[red]Error: File '{file.FullName}' does not exist.[/]");
+        return;
+    }
+
+    AnsiConsole.Write(new Rule( $"[yellow]Processing File: [blue]{file.FullName}[/][/]"));
+    Utils.RunProcess("ffmpeg", $" -hide_banner -loglevel error -i \"{file.FullName}\" -filter_complex \"[0:a]channelsplit=channel_layout=stereo:channels=FL[left];[0:a]channelsplit=channel_layout=stereo:channels=FR[right]\" -map \"[left]\" left.flac -map \"[right]\" right.flac");
+
+    AnsiConsole.Write(new Rule("[yellow]Starting separation on [bold]left[/] channel...[/]"));
+    await MOTM.Execute("left.flac", 63, apiKey, null, null, null, OutputFormat.FLAC);
+    AnsiConsole.Write(new Rule("[yellow]Starting separation on [bold]right[/] channel...[/]"));
+    await MOTM.Execute("right.flac", 63, apiKey, null, null, null, OutputFormat.FLAC);
+    var drumsFileName = "";
+    switch (drumsOnChannel)
+    {
+        case ChannelWhere.Left:
+            AnsiConsole.Write(new Rule("[yellow]Starting drums separation on [bold]left[/] channel...[/]"));
+            drumsFileName = "left_Algo63_01_Drums.flac";
+            break;
+        case ChannelWhere.Right:
+            AnsiConsole.Write(new Rule("[yellow]Starting drums separation on [bold]right[/] channel...[/]"));
+            drumsFileName = "right_Algo63_01_Drums.flac";
+            break;
+    }
+    var drumsFileNameWithoutExtension = Path.GetFileNameWithoutExtension(drumsFileName);
+
+    Console.WriteLine(new string('-', Console.WindowWidth));
+    if (separateTambourine) //--algorithm=76
+    {
+        AnsiConsole.Write(new Rule("[yellow]Starting [bold]tambourine[/] separation...[/]"));
+        await MOTM.Execute(drumsFileName, 76, apiKey, null, null, null, OutputFormat.FLAC);
+        AnsiConsole.Write(new Rule("[yellow]Starting [bold]drumkit components[/] separation...[/]"));
+        await MOTM.Execute($"{drumsFileNameWithoutExtension}_Algo76_01_Other.flac", 37, apiKey, 7, 1, null, OutputFormat.FLAC);
+
+    }
+    else
+    {
+        AnsiConsole.Write(new Rule("[yellow]Starting [bold]drumkit components[/] separation...[/]"));
+        await MOTM.Execute(drumsFileName, 37, apiKey, 7, 1, null, OutputFormat.FLAC);
+    }
+
+
+    if (acousticOnChannel.HasValue)
+    {
+        switch (acousticOnChannel.Value)
+        {
+            case ChannelWhere.Left:
+                AnsiConsole.Write(new Rule("[yellow]Starting acoustic separation on [bold]left[/] channel...[/]"));
+                await MOTM.Execute("left_Algo63_04_Guitar.flac", 66, apiKey, null, 0, null, OutputFormat.FLAC);
+                break;
+            case ChannelWhere.Right:
+                AnsiConsole.Write(new Rule("[yellow]Starting acoustic separation on [bold]right[/] channel...[/]"));
+                await MOTM.Execute("right_Algo63_04_Guitar.flac", 66, apiKey, null, 0, null, OutputFormat.FLAC);
+                break;
+        }
+    }
+
+    if (karaokeOnVocals)
+    {
+        AnsiConsole.Write(new Rule("[yellow]Starting lead/backing vocals separation...[/]"));
+        await MOTM.Execute("right_Algo63_03_Vocals.flac", 49, apiKey, 6, 0, null, OutputFormat.FLAC);
+    }
+
+});
+
+rootCommand.Add(batchedCommand);
 
 // Parse the command-line arguments and invoke the root command
 var parseResult = rootCommand.Parse(args);
@@ -226,3 +285,9 @@ public enum OutputFormat
     FLAC24
 };
 
+
+public enum ChannelWhere
+{
+    Left,
+    Right
+};
