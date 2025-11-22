@@ -32,6 +32,21 @@ public static class Utils
         return await httpClient.GetStringAsync(url); // Perform an HTTP GET request.
     }
 
+    public static string ExtensionFromOutputFormat(OutputFormat outputFormat)
+    {
+        return outputFormat switch
+        {
+            OutputFormat.FLAC => "flac",
+            OutputFormat.MP3 => "mp3",
+            OutputFormat.M4A => "m4a",
+            OutputFormat.WAV => "wav",
+            OutputFormat.WAV32 => "wav",
+            OutputFormat.FLAC24 => "flac",
+            _ => throw new ArgumentOutOfRangeException(nameof(outputFormat), "Unsupported output format")
+        };
+    }
+    
+
     // Enum representing different progress styles for ConEmu terminal.
     public enum ConEmuProgressStyle
     {

@@ -75,7 +75,7 @@ Option<bool> tambourineSeparationOption = new("--separate-tambourine", "-t")
 
 Option<bool> doLeadBackSeparationOnVocalsOption = new("--karaoke-on-vocals", "-v")
 {
-    Description = "Enable lead-back vocals separation.",
+    Description = "Enable lead/back vocals separation.",
     DefaultValueFactory = result => false
 };
 
@@ -98,7 +98,6 @@ RootCommand rootCommand = new("Audio Separator CLI")
 {
     apiKeyOption
 };
-
 
 
 Command singleCommand = new("single", "Runs a single separation")
@@ -222,11 +221,11 @@ batchedCommand.SetAction(async parseResult =>
     {
         case ChannelWhere.Left:
             AnsiConsole.Write(new Rule("[yellow]Starting drums separation on [bold]left[/] channel...[/]"));
-            drumsFileName = "left_Algo63_01_Drums.flac";
+            drumsFileName = $"left_Algo63_01_Drums.{Utils.ExtensionFromOutputFormat(defaultFormat)}";
             break;
         case ChannelWhere.Right:
             AnsiConsole.Write(new Rule("[yellow]Starting drums separation on [bold]right[/] channel...[/]"));
-            drumsFileName = "right_Algo63_01_Drums.flac";
+            drumsFileName = $"right_Algo63_01_Drums.{Utils.ExtensionFromOutputFormat(defaultFormat)}";
             break;
     }
     var drumsFileNameWithoutExtension = Path.GetFileNameWithoutExtension(drumsFileName);
@@ -237,7 +236,7 @@ batchedCommand.SetAction(async parseResult =>
         AnsiConsole.Write(new Rule("[yellow]Starting [bold]tambourine[/] separation...[/]"));
         await MOTM.Execute(drumsFileName, 76, apiKey, null, null, null, defaultFormat);
         AnsiConsole.Write(new Rule("[yellow]Starting [bold]drumkit components[/] separation...[/]"));
-        await MOTM.Execute($"{drumsFileNameWithoutExtension}_Algo76_01_Other.flac", 37, apiKey, 7, 1, null, defaultFormat);
+        await MOTM.Execute($"{drumsFileNameWithoutExtension}_Algo76_01_Other.{Utils.ExtensionFromOutputFormat(defaultFormat)}", 37, apiKey, 7, 1, null, defaultFormat);
 
     }
     else
@@ -253,11 +252,11 @@ batchedCommand.SetAction(async parseResult =>
         {
             case ChannelWhere.Left:
                 AnsiConsole.Write(new Rule("[yellow]Starting acoustic separation on [bold]left[/] channel...[/]"));
-                await MOTM.Execute("left_Algo63_04_Guitar.flac", 66, apiKey, null, 0, null, defaultFormat);
+                await MOTM.Execute($"left_Algo63_04_Guitar.{Utils.ExtensionFromOutputFormat(defaultFormat)}", 66, apiKey, null, 0, null, defaultFormat);
                 break;
             case ChannelWhere.Right:
                 AnsiConsole.Write(new Rule("[yellow]Starting acoustic separation on [bold]right[/] channel...[/]"));
-                await MOTM.Execute("right_Algo63_04_Guitar.flac", 66, apiKey, null, 0, null, defaultFormat);
+                await MOTM.Execute($"right_Algo63_04_Guitar.{Utils.ExtensionFromOutputFormat(defaultFormat)}", 66, apiKey, null, 0, null, defaultFormat);
                 break;
         }
     }
@@ -265,7 +264,7 @@ batchedCommand.SetAction(async parseResult =>
     if (karaokeOnVocals)
     {
         AnsiConsole.Write(new Rule("[yellow]Starting lead/backing vocals separation...[/]"));
-        await MOTM.Execute("right_Algo63_03_Vocals.flac", 49, apiKey, 6, 0, null, defaultFormat);
+        await MOTM.Execute($"right_Algo63_03_Vocals.{Utils.ExtensionFromOutputFormat(defaultFormat)}", 49, apiKey, 6, 0, null, defaultFormat);
     }
 
 });

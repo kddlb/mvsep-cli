@@ -133,7 +133,7 @@ namespace mvsep_cli
                     var tasks = new List<ProgressTask>();
                     foreach (var (stemFile, index) in statusResultObject.Data.Files.Select((value, i) => (value, i)))
                     {
-                        var filename = $"{filenameWithoutExtension}_Algo{algorithm}_{index:D2}_{stemFile.Type}.flac";
+                        var filename = $"{filenameWithoutExtension}_Algo{algorithm}_{index:D2}_{stemFile.Type}.{Utils.ExtensionFromOutputFormat(outputFormat)}";
                         var destinationPath = Path.Combine(cwd, filename);
                         var task = ctx.AddTask($"Downloading {filename}", autoStart: true);
                         // subscribe progress to update spectre task
