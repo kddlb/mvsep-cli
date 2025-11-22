@@ -1,7 +1,6 @@
 ﻿using System.CommandLine;
 using mvsep_cli;
 using Spectre.Console;
-using Spectre.Console.Rendering;
 
 // Define API key option (CLI takes priority over environment variable)
 Option<string> apiKeyOption = new("--api-key", "-k")
@@ -46,7 +45,7 @@ Option<int> addOpt3 = new("--add_opt3", "-o3")
 Option<OutputFormat> outputFormatOption = new("--output-format", "-f")
 {
     Description = "Output format for separated files.",
-    DefaultValueFactory = _ => OutputFormat.FLAC
+    DefaultValueFactory = _ => System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX) ? OutputFormat.WAV : OutputFormat.FLAC
 };
 
 #endregion
