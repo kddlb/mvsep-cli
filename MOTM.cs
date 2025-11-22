@@ -49,16 +49,23 @@ namespace mvsep_cli
                 { "output_format", ((int)outputFormat).ToString() }
             };
 
-            if (opt1.HasValue) paramDict["opt1"] = opt1.Value.ToString();
-            if (opt2.HasValue) paramDict["opt2"] = opt2.Value.ToString();
-            if (opt3.HasValue) paramDict["opt3"] = opt3.Value.ToString();
+            if (opt1.HasValue) paramDict["add_opt1"] = opt1.Value.ToString();
+            if (opt2.HasValue) paramDict["add_opt2"] = opt2.Value.ToString();
+            if (opt3.HasValue) paramDict["add_opt3"] = opt3.Value.ToString();
 
             // Display upload parameters (excluding sensitive data)
             var safeOutputParamDict = paramDict.Where(e => e.Key != "api_token");
             AnsiConsole.MarkupLine("Upload parameters:");
             foreach (var (key, value) in safeOutputParamDict)
             {
-                AnsiConsole.MarkupLineInterpolated($"  [green]{key}[/]: [yellow]{value}[/]");
+                if (key == "output_format")
+                {
+                    AnsiConsole.MarkupLineInterpolated($" - [blue]{key}[/]: [green]{outputFormat}[/]");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLineInterpolated($" - [blue]{key}[/]: [green]{value}[/]");
+                }
             }
 
             // Upload the file and get the result using Spectre.Console progress
