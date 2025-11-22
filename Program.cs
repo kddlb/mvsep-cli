@@ -9,6 +9,8 @@ Option<string> apiKeyOption = new("--api-key", "-k")
     
 };
 
+var defaultFormat = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX) ? OutputFormat.WAV : OutputFormat.FLAC;
+
 #region single command options
 
 // Define the file argument for the CLI
@@ -45,7 +47,7 @@ Option<int> addOpt3 = new("--add_opt3", "-o3")
 Option<OutputFormat> outputFormatOption = new("--output-format", "-f")
 {
     Description = "Output format for separated files.",
-    DefaultValueFactory = _ => System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX) ? OutputFormat.WAV : OutputFormat.FLAC
+    DefaultValueFactory = _ => defaultFormat
 };
 
 #endregion
@@ -212,9 +214,9 @@ batchedCommand.SetAction(async parseResult =>
     Utils.RunProcess("ffmpeg", $" -hide_banner -loglevel error -i \"{file.FullName}\" -filter_complex \"[0:a]channelsplit=channel_layout=stereo:channels=FL[left];[0:a]channelsplit=channel_layout=stereo:channels=FR[right]\" -map \"[left]\" left.flac -map \"[right]\" right.flac");
 
     AnsiConsole.Write(new Rule("[yellow]Starting separation on [bold]left[/] channel...[/]"));
-    await MOTM.Execute("left.flac", 63, apiKey, null, null, null, OutputFormat.FLAC);
+    await MOTM.Execute("left.flac", 63, apiKey, null, null, null, defaultFormat);
     AnsiConsole.Write(new Rule("[yellow]Starting separation on [bold]right[/] channel...[/]"));
-    await MOTM.Execute("right.flac", 63, apiKey, null, null, null, OutputFormat.FLAC);
+    await MOTM.Execute("right.flac", 63, apiKey, null, null, null, defaultFormat);
     var drumsFileName = "";
     switch (drumsOnChannel)
     {
@@ -233,15 +235,15 @@ batchedCommand.SetAction(async parseResult =>
     if (separateTambourine) //--algorithm=76
     {
         AnsiConsole.Write(new Rule("[yellow]Starting [bold]tambourine[/] separation...[/]"));
-        await MOTM.Execute(drumsFileName, 76, apiKey, null, null, null, OutputFormat.FLAC);
+        await MOTM.Execute(drumsFileName, 76, apiKey, null, null, null, defaultFormat);
         AnsiConsole.Write(new Rule("[yellow]Starting [bold]drumkit components[/] separation...[/]"));
-        await MOTM.Execute($"{drumsFileNameWithoutExtension}_Algo76_01_Other.flac", 37, apiKey, 7, 1, null, OutputFormat.FLAC);
+        await MOTM.Execute($"{drumsFileNameWithoutExtension}_Algo76_01_Other.flac", 37, apiKey, 7, 1, null, defaultFormat);
 
     }
     else
     {
         AnsiConsole.Write(new Rule("[yellow]Starting [bold]drumkit components[/] separation...[/]"));
-        await MOTM.Execute(drumsFileName, 37, apiKey, 7, 1, null, OutputFormat.FLAC);
+        await MOTM.Execute(drumsFileName, 37, apiKey, 7, 1, null, defaultFormat);
     }
 
 
@@ -251,11 +253,11 @@ batchedCommand.SetAction(async parseResult =>
         {
             case ChannelWhere.Left:
                 AnsiConsole.Write(new Rule("[yellow]Starting acoustic separation on [bold]left[/] channel...[/]"));
-                await MOTM.Execute("left_Algo63_04_Guitar.flac", 66, apiKey, null, 0, null, OutputFormat.FLAC);
+                await MOTM.Execute("left_Algo63_04_Guitar.flac", 66, apiKey, null, 0, null, defaultFormat);
                 break;
             case ChannelWhere.Right:
                 AnsiConsole.Write(new Rule("[yellow]Starting acoustic separation on [bold]right[/] channel...[/]"));
-                await MOTM.Execute("right_Algo63_04_Guitar.flac", 66, apiKey, null, 0, null, OutputFormat.FLAC);
+                await MOTM.Execute("right_Algo63_04_Guitar.flac", 66, apiKey, null, 0, null, defaultFormat);
                 break;
         }
     }
@@ -263,7 +265,7 @@ batchedCommand.SetAction(async parseResult =>
     if (karaokeOnVocals)
     {
         AnsiConsole.Write(new Rule("[yellow]Starting lead/backing vocals separation...[/]"));
-        await MOTM.Execute("right_Algo63_03_Vocals.flac", 49, apiKey, 6, 0, null, OutputFormat.FLAC);
+        await MOTM.Execute("right_Algo63_03_Vocals.flac", 49, apiKey, 6, 0, null, defaultFormat);
     }
 
 });
