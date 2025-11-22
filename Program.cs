@@ -9,7 +9,9 @@ Option<string> apiKeyOption = new("--api-key", "-k")
     
 };
 
-var defaultFormat = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX) ? OutputFormat.WAV : OutputFormat.FLAC;
+//var defaultFormat = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX) ? OutputFormat.WAV : OutputFormat.FLAC;
+var defaultFormat = OutputFormat.FLAC;
+
 
 #region single command options
 
