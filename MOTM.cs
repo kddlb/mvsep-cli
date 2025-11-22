@@ -58,7 +58,7 @@ namespace mvsep_cli
             AnsiConsole.MarkupLine("Upload parameters:");
             foreach (var (key, value) in safeOutputParamDict)
             {
-                AnsiConsole.MarkupLine($"  [green]{key}[/]: [yellow]{value}[/]");
+                AnsiConsole.MarkupLineInterpolated($"  [green]{key}[/]: [yellow]{value}[/]");
             }
 
             // Upload the file and get the result using Spectre.Console progress
@@ -68,14 +68,14 @@ namespace mvsep_cli
 
             await AnsiConsole.Progress()
                 .AutoClear(true)
-                .Columns(new ProgressColumn[]
-                {
+                .Columns(
+                [
                     new TaskDescriptionColumn(),
                     new ProgressBarColumn(),
                     new PercentageColumn(),
                     new RemainingTimeColumn(),
                     new SpinnerColumn(),
-                })
+                ])
                 .StartAsync(async ctx =>
                 {
                     var task = ctx.AddTask("Uploading file", autoStart: true);
@@ -95,7 +95,7 @@ namespace mvsep_cli
                 });
 
             var uploadResultObject = MvsepUploadSuccess.FromJson(uploadResult);
-            AnsiConsole.MarkupLine($"Upload successful. Job hash: [green]{uploadResultObject.Data.Hash}[/]");
+            AnsiConsole.MarkupLineInterpolated($"Upload successful. Job hash: [green]{uploadResultObject.Data.Hash}[/]");
 
             // Poll the API for the separation result
             var url = uploadResultObject.Data.Link;
